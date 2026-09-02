@@ -9,7 +9,9 @@ import {
 } from "drizzle-orm/sqlite-core";
 
 import { organization, user } from "./auth-schema";
-import type { VaultKeyEnvelope } from "../../vault/types";
+import type { VaultKeyEnvelope } from "../../vault/domain/types";
+
+const sqliteEpochMsNow = sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`;
 
 export const vault = sqliteTable("vault", {
 	id: text("id").primaryKey(),
@@ -18,9 +20,8 @@ export const vault = sqliteTable("vault", {
 		.references(() => organization.id, { onDelete: "cascade" }),
 	name: text("name").notNull(),
 	activeKeyVersion: integer("active_key_version").notNull(),
-	syncFormatVersion: integer("sync_format_version").notNull().default(2),
 	createdAt: integer("created_at", { mode: "timestamp_ms" })
-		.defaultNow()
+		.default(sqliteEpochMsNow)
 		.notNull(),
 	deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
 	purgeStatus: text("purge_status"),
@@ -45,7 +46,7 @@ export const vaultMembership = sqliteTable(
 		role: text("role").notNull(),
 		status: text("status").notNull(),
 		joinedAt: integer("joined_at", { mode: "timestamp_ms" })
-			.defaultNow()
+			.default(sqliteEpochMsNow)
 			.notNull(),
 		revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
 	},
@@ -68,7 +69,7 @@ export const vaultKeyWrapper = sqliteTable(
 		userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
 		envelopeJson: text("envelope_json", { mode: "json" }).$type<VaultKeyEnvelope>().notNull(),
 		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.defaultNow()
+			.default(sqliteEpochMsNow)
 			.notNull(),
 		revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
 	},
@@ -104,10 +105,7 @@ export const vaultSyncStatus = sqliteTable(
 		oldestPendingDeleteAgeMs: integer("oldest_pending_delete_age_ms"),
 		lastCommitAt: integer("last_commit_at"),
 		lastGcAt: integer("last_gc_at"),
-		lastActivityAt: integer("last_activity_at"),
 		lastFlushedAt: integer("last_flushed_at").notNull(),
-		lastFlushError: text("last_flush_error"),
-		lastFlushErrorAt: integer("last_flush_error_at"),
 		createdAt: integer("created_at").notNull(),
 		updatedAt: integer("updated_at").notNull(),
 	},
@@ -117,7 +115,6 @@ export const vaultSyncStatus = sqliteTable(
 			table.storageUsedBytes,
 			table.storageLimitBytes,
 		),
-		index("vault_sync_status_activity_idx").on(table.lastActivityAt),
 	],
 );
 

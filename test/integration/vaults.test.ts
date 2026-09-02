@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { createDb } from "../../src/db/client";
 import * as schema from "../../src/db/d1";
 import { createRuntimeApp } from "../../src/runtime";
-import { VaultRepository } from "../../src/vault/repository";
+import { DrizzleVaultStore } from "../../src/vault/adapters/outbound/drizzle-vault-store";
 import {
 	DEFAULT_VAULT_WRAPPER,
 	jsonRequest,
@@ -192,6 +192,7 @@ describe("vault integration", () => {
 		const selfHostedEnv = {
 			...env,
 			SELF_HOSTED: true,
+			AUTH_ALLOWED_EMAILS: primary.email,
 			VAULT_PURGE_QUEUE: undefined,
 			POLICY_REFRESH_QUEUE: undefined,
 		} as unknown as Env;
@@ -279,7 +280,7 @@ describe("vault integration", () => {
 		const primary = await signUpAndCreateVault("Shared Name");
 		const duplicate = await jsonRequestWithEnv<{ vault: { id: string; name: string } }>(
 			"/v1/vaults",
-			{ ...env, SELF_HOSTED: true },
+			{ ...env, SELF_HOSTED: true, AUTH_ALLOWED_EMAILS: primary.email },
 			{
 				method: "POST",
 				headers: {
@@ -300,7 +301,7 @@ describe("vault integration", () => {
 	it("rolls back vault creation when the initial wrapper cannot be stored", async () => {
 		const account = await signUpAccount();
 		const db = createDb(env.DB);
-		const repository = new VaultRepository(db);
+		const repository = new DrizzleVaultStore(db);
 		const organizationId = await repository.readDefaultOrganizationIdForUser(account.userId);
 		if (!organizationId) {
 			throw new Error("test account is missing an organization");
@@ -459,7 +460,7 @@ describe("vault integration", () => {
 		const primary = await signUpAndCreateVault("Self Hosted Personal");
 		const duplicate = await jsonRequestWithEnv<{ vault: { id: string; name: string } }>(
 			"/v1/vaults",
-			{ ...env, SELF_HOSTED: true },
+			{ ...env, SELF_HOSTED: true, AUTH_ALLOWED_EMAILS: primary.email },
 			{
 				method: "POST",
 				headers: {

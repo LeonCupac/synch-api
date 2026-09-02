@@ -1,7 +1,11 @@
 import { logServerError } from "./errors";
-import { createQueueConsumer, createRuntimeApp } from "./runtime";
+import {
+	createQueueConsumer,
+	createRuntimeApp,
+	runVaultRetentionSchedule,
+} from "./runtime";
 import type { QueueMessage } from "./runtime";
-export { SyncCoordinator } from "./sync-coordinator";
+export { SyncCoordinator } from "./sync-coordinator/adapters/inbound/durable-object-rpc/sync-coordinator";
 
 export default {
 	async fetch(request, env): Promise<Response> {
@@ -20,5 +24,8 @@ export default {
 	},
 	async queue(batch, env): Promise<void> {
 		await createQueueConsumer(env).handleBatch(batch);
+	},
+	async scheduled(controller, env): Promise<void> {
+		await runVaultRetentionSchedule(env, controller.scheduledTime);
 	},
 } satisfies ExportedHandler<Env, QueueMessage>;

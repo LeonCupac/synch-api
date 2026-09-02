@@ -1,46 +1,86 @@
-import type { Auth } from "./factory";
+import type { BetterAuth } from "./better-auth";
 
-export async function getSession(auth: Auth, request: Request) {
-	const headers = normalizeBearerSessionHeaders(request.headers);
-	if (!isBearerSessionHeaders(headers)) {
-		return await auth.api.getSession({ headers });
-	}
+export type AuthenticatedUser = {
+	id: string;
+	email: string;
+	name: string;
+};
 
-	const url = new URL("/api/auth/get-session", request.url);
-	const response = await auth.handler(
-		new Request(url.toString(), {
-			method: "GET",
-			headers,
-		}),
-	);
-	if (!response.ok) {
+export type AuthenticatedSession = {
+	user: AuthenticatedUser;
+	session: {
+		activeOrganizationId: string | null;
+	};
+};
+
+export type SessionLookup = {
+	url: URL;
+	authorization?: string;
+	cookie?: string;
+};
+
+export interface SessionReader {
+	readSession(input: SessionLookup): Promise<AuthenticatedSession | null>;
+}
+
+export function createBetterAuthSessionReader(auth: BetterAuth): SessionReader {
+	return {
+		async readSession(input: SessionLookup): Promise<AuthenticatedSession | null> {
+			const headers = new Headers();
+			if (input.authorization) {
+				headers.set("authorization", input.authorization);
+			}
+			if (input.cookie) {
+				headers.set("cookie", input.cookie);
+			}
+
+			if (isBearerSession(headers)) {
+				headers.delete("cookie");
+				const url = new URL("/api/auth/get-session", input.url);
+				const response = await auth.handler(
+					new Request(url.toString(), {
+						method: "GET",
+						headers,
+					}),
+				);
+				if (!response.ok) {
+					return null;
+				}
+
+				return toAuthenticatedSession(
+					await response.json<Awaited<ReturnType<BetterAuth["api"]["getSession"]>>>(),
+				);
+			}
+
+			return toAuthenticatedSession(await auth.api.getSession({ headers }));
+		},
+	};
+}
+
+function isBearerSession(headers: Headers): boolean {
+	return headers.get("authorization")?.trim().toLowerCase().startsWith("bearer ") ?? false;
+}
+
+function toAuthenticatedSession(
+	data: Awaited<ReturnType<BetterAuth["api"]["getSession"]>>,
+): AuthenticatedSession | null {
+	if (!data?.user) {
 		return null;
 	}
 
-	return await response.json<Awaited<ReturnType<Auth["api"]["getSession"]>>>();
+	return {
+		user: {
+			id: data.user.id,
+			email: data.user.email,
+			name: typeof data.user.name === "string" ? data.user.name : "",
+		},
+		session: {
+			activeOrganizationId: data.session?.activeOrganizationId ?? null,
+		},
+	};
 }
 
-export function normalizeBearerSessionRequest(request: Request): Request {
-	const headers = normalizeBearerSessionHeaders(request.headers);
-	if (headers === request.headers) {
-		return request;
-	}
-
-	return new Request(request, {
-		headers,
-	});
-}
-
-function normalizeBearerSessionHeaders(headers: Headers): Headers {
-	if (!isBearerSessionHeaders(headers)) {
-		return headers;
-	}
-
-	const normalizedHeaders = new Headers(headers);
-	normalizedHeaders.delete("cookie");
-	return normalizedHeaders;
-}
-
-function isBearerSessionHeaders(headers: Headers): boolean {
-	return headers.get("authorization")?.trim().toLowerCase().startsWith("bearer ") ?? false;
+export function displayNameFromAuthenticatedUser(user: AuthenticatedUser): string {
+	const name = user.name.trim();
+	return name || user.email.trim();
 }
